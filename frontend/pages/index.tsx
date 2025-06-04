@@ -1,7 +1,39 @@
 import Head from 'next/head'
 import Link from 'next/link'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/router'
 
 export default function Home() {
+  const router = useRouter()
+  const [user, setUser] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    // Check if user is logged in
+    const userType = localStorage.getItem('userType')
+    const userName = localStorage.getItem('userName')
+    
+    if (userType && userName) {
+      setUser({ userType, name: userName })
+    }
+    setIsLoading(false)
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('userType')
+    localStorage.removeItem('userName')
+    localStorage.removeItem('userEmail')
+    setUser(null)
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-lg">Loading...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Head>
@@ -9,6 +41,45 @@ export default function Home() {
         <meta name="description" content="Connect load owners with drivers for unusual transport needs" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
+
+      {/* Navigation Header */}
+      <header className="bg-white shadow">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center">
+              <h1 className="text-2xl font-bold text-blue-600">Shared Transportation</h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              {user ? (
+                <>
+                  <span className="text-gray-700">Welcome, {user.name}</span>
+                  <button
+                    onClick={() => router.push(user.userType === 'load_owner' ? '/dashboard/load-owner' : '/dashboard/driver')}
+                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                  >
+                    Dashboard
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link href="/auth/login">
+                    <button className="text-blue-600 hover:text-blue-800 font-medium">Login</button>
+                  </Link>
+                  <Link href="/auth/register">
+                    <button className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Register</button>
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
 
       <main className="container mx-auto px-4 py-8">
         <div className="text-center">

@@ -11,4 +11,5 @@ python-decouple
 psycopg2-binary
 pytest
 pytest-asyncio
-httpx 
+httpx
+requests 
