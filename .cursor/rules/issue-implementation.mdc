@@ -1,0 +1,12 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+- checkout to main branch and pull latest changes
+- Using GitHub MCP fetch the next open issue in chronological order
+- Create branch based on issue
+- create automated test. For the backend write api test, for the frontend e2e test in 'testing'folder
+- implement the functionality
+-run tests until it passes
+- create pull request
