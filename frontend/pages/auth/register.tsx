@@ -1,246 +1,403 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import Head from 'next/head';
 import Link from 'next/link';
+
+interface BaseForm {
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+  confirmPassword: string;
+}
+
+interface LoadOwnerForm extends BaseForm {
+  location: string;
+}
+
+interface DriverForm extends BaseForm {
+  licenseInfo: string;
+  serviceArea: string;
+  vehicleType: string;
+  vehicleCapacity: string;
+  vehicleDimensions: string;
+}
+
+interface FormErrors {
+  [key: string]: string;
+}
 
 export default function Register() {
   const router = useRouter();
-  const [formData, setFormData] = useState({
+  const { type } = router.query;
+  const [userType, setUserType] = useState<'load_owner' | 'driver'>('load_owner');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [successMessage, setSuccessMessage] = useState('');
+
+  const [loadOwnerForm, setLoadOwnerForm] = useState<LoadOwnerForm>({
     name: '',
     email: '',
     phone: '',
-    userType: 'load_owner',
     password: '',
     confirmPassword: '',
-    location: '',
-    // Driver specific fields
+    location: ''
+  });
+
+  const [driverForm, setDriverForm] = useState<DriverForm>({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirmPassword: '',
     licenseInfo: '',
+    serviceArea: '',
     vehicleType: '',
     vehicleCapacity: '',
-    serviceArea: ''
+    vehicleDimensions: ''
   });
-  const [errors, setErrors] = useState<{ [key: string]: string }>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
+  useEffect(() => {
+    if (type === 'load_owner' || type === 'driver') {
+      setUserType(type);
     }
-  };
+  }, [type]);
 
-  const validateForm = () => {
-    const newErrors: { [key: string]: string } = {};
+  const currentForm = userType === 'load_owner' ? loadOwnerForm : driverForm;
+  const setCurrentForm = userType === 'load_owner' ? setLoadOwnerForm : setDriverForm;
 
-    if (!formData.name.trim()) newErrors.name = 'Name is required';
-    if (!formData.email.trim()) newErrors.email = 'Email is required';
-    if (!formData.phone.trim()) newErrors.phone = 'Phone is required';
-    if (!formData.password) newErrors.password = 'Password is required';
-    if (formData.password !== formData.confirmPassword) {
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
+    const form = currentForm;
+
+    // Common validations
+    if (!form.name.trim()) newErrors.name = 'Name is required';
+    if (!form.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      newErrors.email = 'Please enter a valid email';
+    }
+    if (!form.phone.trim()) newErrors.phone = 'Phone is required';
+    if (!form.password) {
+      newErrors.password = 'Password is required';
+    } else if (form.password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters';
+    }
+    if (form.password !== form.confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
     }
 
-    if (formData.userType === 'load_owner' && !formData.location.trim()) {
-      newErrors.location = 'Location is required for load owners';
+    // User type specific validations
+    if (userType === 'load_owner') {
+      if (!(form as LoadOwnerForm).location.trim()) {
+        newErrors.location = 'Location is required';
+      }
+    } else {
+      const driverForm = form as DriverForm;
+      if (!driverForm.licenseInfo.trim()) newErrors.licenseInfo = 'License information is required';
+      if (!driverForm.serviceArea.trim()) newErrors.serviceArea = 'Service area is required';
+      if (!driverForm.vehicleType.trim()) newErrors.vehicleType = 'Vehicle type is required';
+      if (!driverForm.vehicleCapacity.trim()) newErrors.vehicleCapacity = 'Vehicle capacity is required';
+      if (!driverForm.vehicleDimensions.trim()) newErrors.vehicleDimensions = 'Vehicle dimensions are required';
     }
 
-    if (formData.userType === 'driver') {
-      if (!formData.licenseInfo.trim()) newErrors.licenseInfo = 'License info is required';
-      if (!formData.vehicleType.trim()) newErrors.vehicleType = 'Vehicle type is required';
-      if (!formData.serviceArea.trim()) newErrors.serviceArea = 'Service area is required';
-    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
-    return newErrors;
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setCurrentForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+
+    // Clear error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: undefined
+      }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
-    setErrors({});
-
-    const validationErrors = validateForm();
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      setIsSubmitting(false);
+    
+    if (!validateForm()) {
       return;
     }
 
+    setIsLoading(true);
+    setErrors({});
+
     try {
-      // For simplified demo, we'll just store in localStorage
-      // In a real app, this would call the backend API
-      
-      localStorage.setItem('userType', formData.userType);
-      localStorage.setItem('userName', formData.name);
-      localStorage.setItem('userEmail', formData.email);
+      const form = currentForm;
+      const registrationData: any = {
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        password: form.password,
+        user_type: userType
+      };
+
+      if (userType === 'load_owner') {
+        registrationData.location = (form as LoadOwnerForm).location;
+      } else {
+        const driverForm = form as DriverForm;
+        registrationData.license_info = driverForm.licenseInfo;
+        registrationData.service_area = driverForm.serviceArea;
+        registrationData.vehicle_info = {
+          type: driverForm.vehicleType,
+          capacity: parseInt(driverForm.vehicleCapacity),
+          dimensions: driverForm.vehicleDimensions
+        };
+      }
+
+      const response = await fetch('http://localhost:8000/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(registrationData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 400 && data.detail.includes('Email already registered')) {
+          setErrors({ email: 'Email already registered' });
+        } else {
+          setErrors({ general: data.detail || 'Registration failed' });
+        }
+        return;
+      }
+
+      // Store token and user info
+      localStorage.setItem('access_token', data.access_token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+
+      setSuccessMessage('Registration successful! Redirecting to dashboard...');
       
       // Redirect based on user type
-      if (formData.userType === 'load_owner') {
-        router.push('/dashboard/load-owner');
-      } else {
-        router.push('/dashboard/driver');
-      }
+      setTimeout(() => {
+        if (userType === 'load_owner') {
+          router.push('/dashboard/load-owner');
+        } else {
+          router.push('/dashboard/driver');
+        }
+      }, 2000);
     } catch (error) {
-      setErrors({ general: 'Registration failed. Please try again.' });
+      setErrors({ general: 'Network error. Please try again.' });
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="text-center mb-6">
-            <h2 className="text-3xl font-extrabold text-gray-900">Create Account</h2>
-            <p className="mt-2 text-sm text-gray-600">
-              Already have an account?{' '}
-              <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
-                Sign in
-              </Link>
-            </p>
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <Head>
+        <title>{`Register as ${userType === 'load_owner' ? 'Load Owner' : 'Driver'} - Shared Transportation`}</title>
+        <meta name="description" content="Create your Shared Transportation account" />
+      </Head>
+
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          Create your account
+        </h2>
+        <p className="mt-2 text-center text-sm text-gray-600">
+          Or{' '}
+          <Link href="/auth/login" className="font-medium text-blue-600 hover:text-blue-500">
+            sign in to existing account
+          </Link>
+        </p>
+      </div>
+
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          {/* User Type Selector */}
+          <div className="mb-6">
+            <div className="flex rounded-md shadow-sm">
+              <button
+                type="button"
+                onClick={() => setUserType('load_owner')}
+                className={`flex-1 py-2 px-3 text-sm font-medium rounded-l-md border ${
+                  userType === 'load_owner'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Load Owner
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserType('driver')}
+                className={`flex-1 py-2 px-3 text-sm font-medium rounded-r-md border-t border-r border-b ${
+                  userType === 'driver'
+                    ? 'bg-green-600 text-white border-green-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Driver
+              </button>
+            </div>
           </div>
 
-          {errors.general && (
-            <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-              {errors.general}
+          {successMessage && (
+            <div className="mb-4 rounded-md bg-green-50 p-4">
+              <div className="text-sm text-green-700">{successMessage}</div>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* User Type Selection */}
-            <div>
-              <label htmlFor="userType" className="block text-sm font-medium text-gray-700">
-                I am a *
-              </label>
-              <select
-                id="userType"
-                name="userType"
-                value={formData.userType}
-                onChange={handleInputChange}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="load_owner">Load Owner (I have things to transport)</option>
-                <option value="driver">Driver (I have a truck/van)</option>
-              </select>
-            </div>
-
-            {/* Name */}
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Full Name *
-              </label>
-              <input
-                type="text"
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.name ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="Enter your full name"
-              />
-              {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
-            </div>
-
-            {/* Email */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email Address *
-              </label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
-                onChange={handleInputChange}
-                className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.email ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="Enter your email"
-              />
-              {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
-            </div>
-
-            {/* Phone */}
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                Phone Number *
-              </label>
-              <input
-                type="tel"
-                id="phone"
-                name="phone"
-                value={formData.phone}
-                onChange={handleInputChange}
-                className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.phone ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="+1-555-0123"
-              />
-              {errors.phone && <p className="mt-1 text-sm text-red-600">{errors.phone}</p>}
-            </div>
-
-            {/* Load Owner specific fields */}
-            {formData.userType === 'load_owner' && (
-              <div>
-                <label htmlFor="location" className="block text-sm font-medium text-gray-700">
-                  Location *
-                </label>
-                <input
-                  type="text"
-                  id="location"
-                  name="location"
-                  value={formData.location}
-                  onChange={handleInputChange}
-                  className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.location ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="City, State"
-                />
-                {errors.location && <p className="mt-1 text-sm text-red-600">{errors.location}</p>}
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            {errors.general && (
+              <div className="rounded-md bg-red-50 p-4">
+                <div className="text-sm text-red-700">{errors.general}</div>
               </div>
             )}
 
-            {/* Driver specific fields */}
-            {formData.userType === 'driver' && (
+            {/* Common Fields */}
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                Full Name
+              </label>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                required
+                value={currentForm.name}
+                onChange={handleInputChange}
+                className={`mt-1 appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                  errors.name ? 'border-red-300' : 'border-gray-300'
+                }`}
+                placeholder="Enter your full name"
+              />
+              {errors.name && <p className="mt-2 text-sm text-red-600">{errors.name}</p>}
+            </div>
+
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email Address
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={currentForm.email}
+                onChange={handleInputChange}
+                className={`mt-1 appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                  errors.email ? 'border-red-300' : 'border-gray-300'
+                }`}
+                placeholder="Enter your email"
+              />
+              {errors.email && <p className="mt-2 text-sm text-red-600">{errors.email}</p>}
+            </div>
+
+            <div>
+              <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+                Phone Number
+              </label>
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                required
+                value={currentForm.phone}
+                onChange={handleInputChange}
+                className={`mt-1 appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                  errors.phone ? 'border-red-300' : 'border-gray-300'
+                }`}
+                placeholder="+1-555-0123"
+              />
+              {errors.phone && <p className="mt-2 text-sm text-red-600">{errors.phone}</p>}
+            </div>
+
+            {/* User Type Specific Fields */}
+            {userType === 'load_owner' ? (
+              <div>
+                <label htmlFor="location" className="block text-sm font-medium text-gray-700">
+                  Location
+                </label>
+                <input
+                  id="location"
+                  name="location"
+                  type="text"
+                  required
+                  value={(currentForm as LoadOwnerForm).location}
+                  onChange={handleInputChange}
+                  className={`mt-1 appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                    errors.location ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  placeholder="City, State"
+                />
+                {errors.location && <p className="mt-2 text-sm text-red-600">{errors.location}</p>}
+              </div>
+            ) : (
               <>
                 <div>
                   <label htmlFor="licenseInfo" className="block text-sm font-medium text-gray-700">
-                    License Information *
+                    License Information
                   </label>
                   <input
-                    type="text"
                     id="licenseInfo"
                     name="licenseInfo"
-                    value={formData.licenseInfo}
+                    type="text"
+                    required
+                    value={(currentForm as DriverForm).licenseInfo}
                     onChange={handleInputChange}
-                    className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.licenseInfo ? 'border-red-500' : 'border-gray-300'
+                    className={`mt-1 appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                      errors.licenseInfo ? 'border-red-300' : 'border-gray-300'
                     }`}
-                    placeholder="e.g., CDL-A, Regular DL"
+                    placeholder="CDL-A WA123456"
                   />
-                  {errors.licenseInfo && <p className="mt-1 text-sm text-red-600">{errors.licenseInfo}</p>}
+                  {errors.licenseInfo && <p className="mt-2 text-sm text-red-600">{errors.licenseInfo}</p>}
+                </div>
+
+                <div>
+                  <label htmlFor="serviceArea" className="block text-sm font-medium text-gray-700">
+                    Service Area
+                  </label>
+                  <input
+                    id="serviceArea"
+                    name="serviceArea"
+                    type="text"
+                    required
+                    value={(currentForm as DriverForm).serviceArea}
+                    onChange={handleInputChange}
+                    className={`mt-1 appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                      errors.serviceArea ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                    placeholder="Seattle Metro Area"
+                  />
+                  {errors.serviceArea && <p className="mt-2 text-sm text-red-600">{errors.serviceArea}</p>}
                 </div>
 
                 <div>
                   <label htmlFor="vehicleType" className="block text-sm font-medium text-gray-700">
-                    Vehicle Type *
+                    Vehicle Type
                   </label>
-                  <input
-                    type="text"
+                  <select
                     id="vehicleType"
                     name="vehicleType"
-                    value={formData.vehicleType}
+                    required
+                    value={(currentForm as DriverForm).vehicleType}
                     onChange={handleInputChange}
-                    className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.vehicleType ? 'border-red-500' : 'border-gray-300'
+                    className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                      errors.vehicleType ? 'border-red-300' : 'border-gray-300'
                     }`}
-                    placeholder="e.g., Box Truck, Pickup Truck, Van"
-                  />
-                  {errors.vehicleType && <p className="mt-1 text-sm text-red-600">{errors.vehicleType}</p>}
+                  >
+                    <option value="">Select vehicle type</option>
+                    <option value="Pickup Truck">Pickup Truck</option>
+                    <option value="Box Truck">Box Truck</option>
+                    <option value="Van">Van</option>
+                    <option value="Semi Truck">Semi Truck</option>
+                    <option value="Flatbed">Flatbed</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  {errors.vehicleType && <p className="mt-2 text-sm text-red-600">{errors.vehicleType}</p>}
                 </div>
 
                 <div>
@@ -248,87 +405,103 @@ export default function Register() {
                     Vehicle Capacity (kg)
                   </label>
                   <input
-                    type="text"
                     id="vehicleCapacity"
                     name="vehicleCapacity"
-                    value={formData.vehicleCapacity}
+                    type="number"
+                    required
+                    value={(currentForm as DriverForm).vehicleCapacity}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., 5000"
+                    className={`mt-1 appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                      errors.vehicleCapacity ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                    placeholder="1000"
                   />
+                  {errors.vehicleCapacity && <p className="mt-2 text-sm text-red-600">{errors.vehicleCapacity}</p>}
                 </div>
 
                 <div>
-                  <label htmlFor="serviceArea" className="block text-sm font-medium text-gray-700">
-                    Service Area *
+                  <label htmlFor="vehicleDimensions" className="block text-sm font-medium text-gray-700">
+                    Vehicle Dimensions (L×W×H cm)
                   </label>
                   <input
+                    id="vehicleDimensions"
+                    name="vehicleDimensions"
                     type="text"
-                    id="serviceArea"
-                    name="serviceArea"
-                    value={formData.serviceArea}
+                    required
+                    value={(currentForm as DriverForm).vehicleDimensions}
                     onChange={handleInputChange}
-                    className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      errors.serviceArea ? 'border-red-500' : 'border-gray-300'
+                    className={`mt-1 appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                      errors.vehicleDimensions ? 'border-red-300' : 'border-gray-300'
                     }`}
-                    placeholder="e.g., Seattle Metro Area"
+                    placeholder="200x150x100"
                   />
-                  {errors.serviceArea && <p className="mt-1 text-sm text-red-600">{errors.serviceArea}</p>}
+                  {errors.vehicleDimensions && <p className="mt-2 text-sm text-red-600">{errors.vehicleDimensions}</p>}
                 </div>
               </>
             )}
 
-            {/* Password */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password *
+                Password
               </label>
               <input
-                type="password"
                 id="password"
                 name="password"
-                value={formData.password}
+                type="password"
+                autoComplete="new-password"
+                required
+                value={currentForm.password}
                 onChange={handleInputChange}
-                className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.password ? 'border-red-500' : 'border-gray-300'
+                className={`mt-1 appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                  errors.password ? 'border-red-300' : 'border-gray-300'
                 }`}
-                placeholder="Enter your password"
+                placeholder="Minimum 8 characters"
               />
-              {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
+              {errors.password && <p className="mt-2 text-sm text-red-600">{errors.password}</p>}
             </div>
 
-            {/* Confirm Password */}
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                Confirm Password *
+                Confirm Password
               </label>
               <input
-                type="password"
                 id="confirmPassword"
                 name="confirmPassword"
-                value={formData.confirmPassword}
+                type="password"
+                autoComplete="new-password"
+                required
+                value={currentForm.confirmPassword}
                 onChange={handleInputChange}
-                className={`mt-1 block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
+                className={`mt-1 appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                  errors.confirmPassword ? 'border-red-300' : 'border-gray-300'
                 }`}
-                placeholder="Confirm your password"
+                placeholder="Re-enter your password"
               />
-              {errors.confirmPassword && <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>}
+              {errors.confirmPassword && <p className="mt-2 text-sm text-red-600">{errors.confirmPassword}</p>}
             </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-                isSubmitting
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
-            >
-              {isSubmitting ? 'Creating Account...' : 'Create Account'}
-            </button>
+            <div>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
+                  userType === 'load_owner' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                  isLoading ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+              >
+                {isLoading ? 'Creating account...' : `Create ${userType === 'load_owner' ? 'Load Owner' : 'Driver'} Account`}
+              </button>
+            </div>
           </form>
+
+          <div className="mt-6">
+            <div className="text-center">
+              <Link href="/" className="text-sm text-gray-600 hover:text-gray-900">
+                ← Back to homepage
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>

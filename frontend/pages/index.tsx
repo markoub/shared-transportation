@@ -1,30 +1,45 @@
+import { useState, useEffect } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  user_type: string;
+}
+
 export default function Home() {
-  const router = useRouter()
-  const [user, setUser] = useState<any>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // Check if user is logged in
-    const userType = localStorage.getItem('userType')
-    const userName = localStorage.getItem('userName')
-    
-    if (userType && userName) {
-      setUser({ userType, name: userName })
+    const token = localStorage.getItem('access_token');
+    const userData = localStorage.getItem('user');
+
+    if (token && userData) {
+      setUser(JSON.parse(userData));
     }
-    setIsLoading(false)
-  }, [])
+    setIsLoading(false);
+  }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('userType')
-    localStorage.removeItem('userName')
-    localStorage.removeItem('userEmail')
-    setUser(null)
-  }
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user');
+    setUser(null);
+    router.push('/');
+  };
+
+  const goToDashboard = () => {
+    if (user?.user_type === 'load_owner') {
+      router.push('/dashboard/load-owner');
+    } else {
+      router.push('/dashboard/driver');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -38,7 +53,7 @@ export default function Home() {
           <p className="text-lg text-gray-600 mt-4 text-center">Loading...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -72,9 +87,16 @@ export default function Home() {
                       <span className="text-white text-sm font-medium">{user.name[0].toUpperCase()}</span>
                     </div>
                     <span className="text-gray-700 font-medium">Welcome, {user.name}</span>
+                    <span className={`px-3 py-1 text-sm rounded-full ${
+                      user.user_type === 'load_owner' 
+                        ? 'bg-blue-100 text-blue-800' 
+                        : 'bg-green-100 text-green-800'
+                    }`}>
+                      {user.user_type === 'load_owner' ? 'Load Owner' : 'Driver'}
+                    </span>
                   </div>
                   <button
-                    onClick={() => router.push(user.userType === 'load_owner' ? '/dashboard/load-owner' : '/dashboard/driver')}
+                    onClick={goToDashboard}
                     className="btn-primary"
                   >
                     Dashboard
@@ -122,7 +144,25 @@ export default function Home() {
               Safe, reliable, and efficient load sharing for everyone.
             </p>
             
-            {!user && (
+            {user ? (
+              <div className="max-w-2xl mx-auto bg-white/60 backdrop-blur-sm p-8 rounded-xl shadow-lg">
+                <h2 className="text-2xl font-semibold mb-4">Welcome back!</h2>
+                <p className="text-gray-600 mb-6">
+                  You're logged in as a {user.user_type === 'load_owner' ? 'Load Owner' : 'Driver'}. 
+                  Ready to get started?
+                </p>
+                <button
+                  onClick={goToDashboard}
+                  className={`px-8 py-3 rounded-lg text-white font-medium transition-colors ${
+                    user.user_type === 'load_owner'
+                      ? 'bg-blue-600 hover:bg-blue-700'
+                      : 'bg-green-600 hover:bg-green-700'
+                  }`}
+                >
+                  Go to Dashboard
+                </button>
+              </div>
+            ) : (
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link href="/auth/register?type=load_owner">
                   <button className="btn-primary text-lg px-8 py-4 animate-slide-up">
@@ -231,8 +271,8 @@ export default function Home() {
           </div>
           
           <div className="text-center mt-12">
-                         <Link href="/auth/login">
-               <button className="text-blue-600 hover:text-blue-800 font-medium text-lg transition-colors duration-200">
+            <Link href="/auth/login">
+              <button className="text-blue-600 hover:text-blue-800 font-medium text-lg transition-colors duration-200">
                 Already have an account? Sign in →
               </button>
             </Link>
@@ -245,7 +285,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="flex items-center space-x-3 mb-4 md:mb-0">
-                             <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-green-500 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-green-500 rounded-lg flex items-center justify-center">
                 <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7l4-4m0 0l4 4m-4-4v18" />
                 </svg>
