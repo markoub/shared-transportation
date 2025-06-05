@@ -83,7 +83,7 @@ class TestLoadPosting:
     def test_create_load_requires_authentication(self):
         """Test that load creation requires authentication"""
         response = requests.post(f"{BASE_URL}/api/loads/", json=self.valid_load_data)
-        assert response.status_code == 401
+        assert response.status_code == 403
 
     def test_create_load_requires_load_owner(self):
         """Test that only load owners can create loads"""
@@ -221,7 +221,7 @@ class TestLoadPosting:
     def test_update_load_requires_authentication(self):
         """Test that load update requires authentication"""
         response = requests.put(f"{BASE_URL}/api/loads/1", json={"title": "Updated"})
-        assert response.status_code == 401
+        assert response.status_code == 403
 
     def test_update_load_requires_ownership(self):
         """Test that only load owner can update their loads"""
@@ -253,7 +253,7 @@ class TestLoadPosting:
     def test_delete_load_requires_authentication(self):
         """Test that load deletion requires authentication"""
         response = requests.delete(f"{BASE_URL}/api/loads/1")
-        assert response.status_code == 401
+        assert response.status_code == 403
 
     def test_delete_load_requires_ownership(self):
         """Test that only load owner can delete their loads"""

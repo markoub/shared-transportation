@@ -4,7 +4,7 @@ from database import get_db, Load, LoadStatus, User, UserType
 from pydantic import BaseModel, validator
 from typing import List, Optional
 from datetime import datetime
-# from routers.auth import get_current_user  # Commented out for simplified demo
+from routers.auth import get_current_user
 
 router = APIRouter()
 
@@ -87,13 +87,16 @@ class LoadResponse(BaseModel):
 @router.post("/", response_model=LoadResponse, status_code=status.HTTP_201_CREATED)
 async def create_load(
     load: LoadCreate, 
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # Simplified for demo
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Create a new load request"""
-    # For demo purposes, we'll use a fixed owner_id
-    # In real implementation, this would come from current_user
-    owner_id = 1  # Demo owner ID
+    # Only load owners can create loads
+    if current_user.user_type != UserType.LOAD_OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only load owners can create loads"
+        )
     
     # Convert images list to JSON string if provided
     images_json = None
@@ -103,7 +106,7 @@ async def create_load(
     
     # Create new load
     db_load = Load(
-        owner_id=owner_id,
+        owner_id=current_user.id,
         title=load.title,
         description=load.description,
         pickup_location=load.pickup_location,
@@ -121,9 +124,6 @@ async def create_load(
     db.refresh(db_load)
     
     # Prepare response with owner information
-    # For demo, we'll get the owner from database
-    owner = db.query(User).filter(User.id == owner_id).first()
-    
     response_data = LoadResponse(
         id=db_load.id,
         owner_id=db_load.owner_id,
@@ -140,9 +140,9 @@ async def create_load(
         images=load.images,
         created_at=db_load.created_at,
         updated_at=db_load.updated_at,
-        owner_name=owner.name if owner else "Demo Owner",
-        owner_email=owner.email if owner else "demo@example.com",
-        owner_phone=owner.phone if owner else "+1-555-0123"
+        owner_name=current_user.name,
+        owner_email=current_user.email,
+        owner_phone=current_user.phone
     )
     
     return response_data
@@ -216,14 +216,18 @@ async def get_loads(
 
 @router.get("/my-loads", response_model=List[LoadResponse])
 async def get_user_loads(
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # Simplified for demo
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Get loads for the current user (owned or assigned)"""
-    # For demo, return all loads
-    loads = db.query(Load).all()
+    """Get loads for the current user (owner or driver)"""
+    if current_user.user_type == UserType.LOAD_OWNER:
+        # Get loads owned by this user
+        loads = db.query(Load).filter(Load.owner_id == current_user.id).all()
+    else:
+        # Get loads assigned to this driver
+        loads = db.query(Load).filter(Load.driver_id == current_user.id).all()
     
-    # Prepare response
+    # Prepare response with owner and driver information
     response_loads = []
     for load in loads:
         # Parse images JSON
@@ -235,8 +239,10 @@ async def get_user_loads(
             except:
                 images = None
         
-        # Get owner and driver info
+        # Get owner info
         owner = db.query(User).filter(User.id == load.owner_id).first()
+        
+        # Get driver info if assigned
         driver_name = driver_email = driver_phone = None
         if load.driver_id:
             driver = db.query(User).filter(User.id == load.driver_id).first()
@@ -273,8 +279,9 @@ async def get_user_loads(
 
 @router.get("/{load_id}", response_model=LoadResponse)
 async def get_load(load_id: int, db: Session = Depends(get_db)):
-    """Get specific load details"""
+    """Get a specific load by ID"""
     load = db.query(Load).filter(Load.id == load_id).first()
+    
     if not load:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -290,8 +297,10 @@ async def get_load(load_id: int, db: Session = Depends(get_db)):
         except:
             images = None
     
-    # Get owner and driver info
+    # Get owner info
     owner = db.query(User).filter(User.id == load.owner_id).first()
+    
+    # Get driver info if assigned
     driver_name = driver_email = driver_phone = None
     if load.driver_id:
         driver = db.query(User).filter(User.id == load.driver_id).first()
@@ -328,27 +337,32 @@ async def get_load(load_id: int, db: Session = Depends(get_db)):
 async def update_load(
     load_id: int,
     load_update: LoadUpdate,
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # Simplified for demo
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Update a load (only by owner)"""
     load = db.query(Load).filter(Load.id == load_id).first()
+    
     if not load:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Load not found"
         )
     
-    # For demo, allow any update
-    # In real implementation, check ownership
+    # Check if current user is the owner
+    if load.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only update your own loads"
+        )
     
-    # Update fields that were provided
+    # Update fields
     update_data = load_update.dict(exclude_unset=True)
     
     # Handle images separately
-    if 'images' in update_data:
+    if 'images' in update_data and update_data['images'] is not None:
         import json
-        load.images = json.dumps(update_data['images']) if update_data['images'] else None
+        load.images = json.dumps(update_data['images'])
         del update_data['images']
     
     for field, value in update_data.items():
@@ -358,25 +372,57 @@ async def update_load(
     db.commit()
     db.refresh(load)
     
-    # Return updated load
-    return await get_load(load_id, db)
+    # Parse images for response
+    images = None
+    if load.images:
+        import json
+        try:
+            images = json.loads(load.images)
+        except:
+            images = None
+    
+    return LoadResponse(
+        id=load.id,
+        owner_id=load.owner_id,
+        driver_id=load.driver_id,
+        title=load.title,
+        description=load.description,
+        pickup_location=load.pickup_location,
+        delivery_location=load.delivery_location,
+        status=load.status.value,
+        weight=load.weight,
+        dimensions=load.dimensions,
+        pickup_date=load.pickup_date,
+        special_requirements=load.special_requirements,
+        images=images,
+        created_at=load.created_at,
+        updated_at=load.updated_at,
+        owner_name=current_user.name,
+        owner_email=current_user.email,
+        owner_phone=current_user.phone
+    )
 
 @router.delete("/{load_id}")
 async def delete_load(
     load_id: int,
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # Simplified for demo
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Delete a load (only by owner)"""
     load = db.query(Load).filter(Load.id == load_id).first()
+    
     if not load:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Load not found"
         )
     
-    # For demo, allow any delete
-    # In real implementation, check ownership
+    # Check if current user is the owner
+    if load.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own loads"
+        )
     
     db.delete(load)
     db.commit()
@@ -386,33 +432,37 @@ async def delete_load(
 @router.post("/{load_id}/claim")
 async def claim_load(
     load_id: int, 
-    db: Session = Depends(get_db)
-    # current_user: User = Depends(get_current_user)  # Simplified for demo
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Claim a load (driver action)"""
-    # For demo, we'll use a fixed driver_id
-    driver_id = 2  # Demo driver ID
+    """Claim a load (only by drivers)"""
+    # Only drivers can claim loads
+    if current_user.user_type != UserType.DRIVER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only drivers can claim loads"
+        )
     
     load = db.query(Load).filter(Load.id == load_id).first()
+    
     if not load:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Load not found"
         )
     
-    # Check if load is available for claiming
     if load.status != LoadStatus.POSTED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Load is not available for claiming"
         )
     
-    # Claim the load
-    load.driver_id = driver_id
+    # Assign driver and update status
+    load.driver_id = current_user.id
     load.status = LoadStatus.CLAIMED
     load.updated_at = datetime.now()
     
     db.commit()
     db.refresh(load)
     
-    return {"message": "Load claimed successfully", "load_id": load_id} 
+    return {"message": "Load claimed successfully", "load_id": load.id} 
