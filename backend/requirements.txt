@@ -6,7 +6,7 @@ python-multipart
 python-jose
 passlib
 bcrypt
-pydantic
+pydantic[email]
 python-decouple
 psycopg2-binary
 pytest

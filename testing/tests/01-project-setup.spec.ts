@@ -31,7 +31,7 @@ test.describe('Project Setup - Issue #1', () => {
         password: 'testpass'
       }
     });
-    expect(authResponse.status()).toBe(200);
+    expect(authResponse.status()).toBe(201);
 
     // Test loads routes
     const loadsResponse = await request.get('http://localhost:8000/api/loads/');
