@@ -56,7 +56,6 @@ export default function Login() {
         [name]: undefined
       }));
     }
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
